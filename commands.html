@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+    <script>
+      function slugify(subject) {
+        var s = (subject || "email").toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50).replace(/-+$/g, "");
+        return s || "email";
+      }
+
+      function toISODate(d) {
+        var m = String(d.getMonth() + 1).padStart(2, "0");
+        var day = String(d.getDate()).padStart(2, "0");
+        return d.getFullYear() + "-" + m + "-" + day;
+      }
+
+      // Max URL length trusted for the plgbrain:// scheme; body truncated beyond it.
+      var MAX_URL_LEN = 6000;
+
+      function buildUrl(subject, sender, slug, date, body) {
+        return "plgbrain://ingest?subject=" + encodeURIComponent(subject) +
+          "&sender=" + encodeURIComponent(sender) +
+          "&slug=" + encodeURIComponent(slug) +
+          "&date=" + encodeURIComponent(date) +
+          "&body=" + encodeURIComponent(body);
+      }
+
+      function sendToBrain(event) {
+        var item = Office.context.mailbox.item;
+        var subject = item.subject || "";
+        var sender = (item.from && item.from.emailAddress) || "";
+        var senderName = (item.from && item.from.displayName) || "";
+        var to = (item.to || []).map(function (r) { return r.emailAddress; }).join(", ");
+        var dateObj = item.dateTimeCreated ? new Date(item.dateTimeCreated) : new Date();
+        var dateStr = toISODate(dateObj);
+
+        item.body.getAsync(Office.CoercionType.Text, function (result) {
+          var body = result.status === Office.AsyncResultStatus.Succeeded ? (result.value || "") : "";
+          var slug = slugify(subject);
+          var senderCombined = senderName + " " + sender;
+          var header =
+            "From: " + senderName + " <" + sender + ">\n" +
+            "To: " + to + "\n" +
+            "Date: " + dateObj.toString() + "\n" +
+            "Subject: " + subject + "\n\n----------------------------------------\n\n";
+
+          var payload = header + body;
+          var url = buildUrl(subject, senderCombined, slug, dateStr, payload);
+          if (url.length > MAX_URL_LEN) {
+            var budget = MAX_URL_LEN - buildUrl(subject, senderCombined, slug, dateStr, header + "\n[TRUNCATED]").length;
+            var keep = Math.max(0, budget);
+            payload = header + body.slice(0, keep) + "\n\n[TRUNCATED — full email is in the mailbox]";
+            url = buildUrl(subject, senderCombined, slug, dateStr, payload);
+          }
+
+          window.open(url, "_blank");
+
+          item.notificationMessages.replaceAsync("plgSent", {
+            type: "informationalMessage",
+            message: "Sent to Brain: " + dateStr + "-" + slug + ".txt",
+            icon: "icon16",
+            persistent: false
+          });
+          event.completed();
+        });
+      }
+
+      Office.onReady(function () {});
+      if (typeof Office !== "undefined") {
+        Office.actions.associate("sendToBrain", sendToBrain);
+      }
+    </script>
+  </head>
+  <body></body>
+</html>

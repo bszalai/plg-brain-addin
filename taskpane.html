@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Send to Brain</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+    <style>
+      body { font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px; margin: 12px; color: #222; }
+      h1 { font-size: 15px; margin: 0 0 8px; }
+      .row { margin: 4px 0; }
+      .k { color: #666; display: inline-block; width: 82px; }
+      button { font-size: 13px; padding: 6px 12px; margin-top: 10px; cursor: pointer; }
+      #status { margin-top: 10px; color: #0a7d00; }
+      code { background: #f2f2f2; padding: 1px 4px; border-radius: 3px; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <h1>Send to Brain</h1>
+    <div class="row"><span class="k">Filename</span><span id="fn">—</span></div>
+    <button id="send">Send to Brain</button>
+    <div id="status"></div>
+
+    <script>
+      function slugify(subject) {
+        var s = (subject || "email").toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50).replace(/-+$/g, "");
+        return s || "email";
+      }
+
+      let ctx = {};
+      Office.onReady(() => {
+        const item = Office.context.mailbox.item;
+        const subject = item.subject || "";
+        const senderName = (item.from && item.from.displayName) || "";
+        const sender = (item.from && item.from.emailAddress) || "";
+        const d = item.dateTimeCreated ? new Date(item.dateTimeCreated) : new Date();
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const slug = slugify(subject);
+        ctx = { subject, senderName, sender, dateStr, slug, item };
+        document.getElementById("fn").textContent = `${dateStr}-${slug}.txt`;
+        document.getElementById("send").onclick = fire;
+      });
+
+      function fire() {
+        ctx.item.body.getAsync(Office.CoercionType.Text, (r) => {
+          const body = r.status === Office.AsyncResultStatus.Succeeded ? r.value || "" : "";
+          const header =
+            `From: ${ctx.senderName} <${ctx.sender}>\nSubject: ${ctx.subject}\nDate: ${ctx.dateStr}\n\n----------------------------------------\n\n`;
+          const url =
+            `plgbrain://ingest?subject=${encodeURIComponent(ctx.subject)}` +
+            `&sender=${encodeURIComponent(ctx.senderName + " " + ctx.sender)}` +
+            `&slug=${encodeURIComponent(ctx.slug)}&date=${encodeURIComponent(ctx.dateStr)}` +
+            `&body=${encodeURIComponent(header + body)}`;
+          window.open(url, "_blank");
+          document.getElementById("status").textContent = "Handed off to PLG Brain.app.";
+        });
+      }
+    </script>
+  </body>
+</html>
